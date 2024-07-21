@@ -29,7 +29,7 @@ dbConnection.connect()
     console.log('Connected to MongoDB');
     const database = dbConnection.db(databaseName);
     const usersCollection = database.collection('users');
-    const expensesCollection = database.collection('Expenses');
+    
 
     const generateToken = (user) => {
       const payload = {
@@ -140,7 +140,7 @@ dbConnection.connect()
     app.get('/expenses', verifyToken, async (req, res) => {
       try {
         const userId = req.user.userId;
-        const expenses = await expensesCollection.find({ userId: new ObjectId(userId) }).toArray();
+        const expenses = await usersCollection.find({ userId: new ObjectId(userId) }).toArray();
         res.status(200).json(expenses);
       } catch (error) {
         console.error('Error fetching expenses:', error.message);
@@ -152,7 +152,7 @@ dbConnection.connect()
       try {
         const { amount, category, date } = req.body;
         const userId = req.user.userId;
-        await expensesCollection.insertOne({ userId: new ObjectId(userId), amount, category, date });
+        await usersCollection.insertOne({ userId: new ObjectId(userId), amount, category, date });
 
         await usersCollection.updateOne(
           { _id: new ObjectId(userId) },
@@ -170,7 +170,7 @@ dbConnection.connect()
       try {
         const expenseId = req.params.id;
         const userId = req.user.userId;
-        const result = await expensesCollection.deleteOne({ _id: new ObjectId(expenseId), userId: new ObjectId(userId) });
+        const result = await usersCollection.deleteOne({ _id: new ObjectId(expenseId), userId: new ObjectId(userId) });
         if (result.deletedCount === 1) {
           await usersCollection.updateOne(
             { _id: new ObjectId(userId) },
@@ -195,7 +195,7 @@ dbConnection.connect()
         const updateDoc = {
           $set: { amount, category, date }
         };
-        const result = await expensesCollection.updateOne(filter, updateDoc);
+        const result = await usersCollection.updateOne(filter, updateDoc);
         if (result.modifiedCount === 1) {
           await usersCollection.updateOne(
             { _id: new ObjectId(userId), 'expenses._id': new ObjectId(expenseId) },
