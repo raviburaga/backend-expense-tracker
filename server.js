@@ -29,7 +29,6 @@ dbConnection.connect()
     console.log('Connected to MongoDB');
     const database = dbConnection.db(databaseName);
     const usersCollection = database.collection('users');
-    
 
     const generateToken = (user) => {
       const payload = {
@@ -140,8 +139,11 @@ dbConnection.connect()
     app.get('/expenses', verifyToken, async (req, res) => {
       try {
         const userId = req.user.userId;
-        const expenses = await usersCollection.find({ userId: new ObjectId(userId) }).toArray();
-        res.status(200).json(expenses);
+        const user = await usersCollection.findOne({ _id: new ObjectId(userId) }, { projection: { expenses: 1 } });
+        if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+        res.status(200).json(user.expenses);
       } catch (error) {
         console.error('Error fetching expenses:', error.message);
         res.status(500).send('Internal Server Error');
@@ -152,14 +154,18 @@ dbConnection.connect()
       try {
         const { amount, category, date } = req.body;
         const userId = req.user.userId;
-        await usersCollection.insertOne({ userId: new ObjectId(userId), amount, category, date });
-
-        await usersCollection.updateOne(
+        const expense = { _id: new ObjectId(), amount, category, date };
+        
+        const result = await usersCollection.updateOne(
           { _id: new ObjectId(userId) },
-          { $push: { expenses: { amount, category, date } } }
+          { $push: { expenses: expense } }
         );
 
-        res.status(201).send('Expense added successfully');
+        if (result.modifiedCount === 1) {
+          res.status(201).send('Expense added successfully');
+        } else {
+          res.status(404).json({ message: 'User not found' });
+        }
       } catch (error) {
         console.error('Error adding expense:', error.message);
         res.status(500).send('Internal Server Error');
@@ -170,12 +176,13 @@ dbConnection.connect()
       try {
         const expenseId = req.params.id;
         const userId = req.user.userId;
-        const result = await usersCollection.deleteOne({ _id: new ObjectId(expenseId), userId: new ObjectId(userId) });
-        if (result.deletedCount === 1) {
-          await usersCollection.updateOne(
-            { _id: new ObjectId(userId) },
-            { $pull: { expenses: { _id: new ObjectId(expenseId) } } }
-          );
+
+        const result = await usersCollection.updateOne(
+          { _id: new ObjectId(userId) },
+          { $pull: { expenses: { _id: new ObjectId(expenseId) } } }
+        );
+
+        if (result.modifiedCount === 1) {
           res.status(200).json({ message: 'Expense deleted successfully' });
         } else {
           res.status(404).json({ message: 'Expense not found' });
@@ -191,16 +198,13 @@ dbConnection.connect()
         const expenseId = req.params.id;
         const userId = req.user.userId;
         const { amount, category, date } = req.body;
-        const filter = { _id: new ObjectId(expenseId), userId: new ObjectId(userId) };
-        const updateDoc = {
-          $set: { amount, category, date }
-        };
-        const result = await usersCollection.updateOne(filter, updateDoc);
+
+        const result = await usersCollection.updateOne(
+          { _id: new ObjectId(userId), 'expenses._id': new ObjectId(expenseId) },
+          { $set: { 'expenses.$.amount': amount, 'expenses.$.category': category, 'expenses.$.date': date } }
+        );
+
         if (result.modifiedCount === 1) {
-          await usersCollection.updateOne(
-            { _id: new ObjectId(userId), 'expenses._id': new ObjectId(expenseId) },
-            { $set: { 'expenses.$.amount': amount, 'expenses.$.category': category, 'expenses.$.date': date } }
-          );
           res.status(200).json({ message: 'Expense updated successfully' });
         } else {
           res.status(404).json({ message: 'Expense not found or no changes made' });
